@@ -28,4 +28,4 @@ class LabeledPoint: # un point con los proximos grupos más cercanos
 class Group: # un grupo que tiene lista de point, un radio y el punto más lejano
     points: list 
     radius: float =-1
-    furthest_point: Point = None  
+    furthest_point: Point = None 
