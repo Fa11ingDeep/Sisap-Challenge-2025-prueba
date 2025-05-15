@@ -360,3 +360,41 @@ def self_sim_join(data,c1,c2,k, metric_fn):
             writer.writerow(['tiempo'])
             writer.writerow([tiempo_ejecucion_g])
     #return results
+
+# Esta parte será separada en un futuro
+benchmark_dev_gooaq_file = h5py.File("benchmark-dev-gooaq.h5", "r") # Lectura del archivo
+x=benchmark_dev_gooaq_file['train'] # Filtra los vectores a utilizar
+folder_path = 'root_join_floor_2_c_1_1_PCA_dim_2_class'
+os.makedirs(folder_path, exist_ok=True)
+inicio_global=time.time()
+inicio_dim_red=inicio_global
+
+# Aplicación de PCA
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(x)
+pca = PCA(n_components=2)
+X_pca = pca.fit_transform(X_scaled)
+
+
+fin_dim_red=time.time()
+d_dim_red=fin_dim_red-inicio_dim_red
+
+# Registro del tiempo de demora y la dimensión de PCA
+file_name_dim_red = f'{folder_path}/tiempo_dim_redu.csv'
+with open(file_name_dim_red, mode='a', newline='') as file_dim_red:
+    writer = csv.writer(file_dim_red)
+    writer.writerow(['tiempo','pca_dim'])
+    writer.writerow([d_dim_red,X_pca.shape[1]])
+
+# Ejecuta el self_join
+self_sim_join(X_pca,1,1,15,cos_sim)
+
+fin_global=time.time()
+total_global=fin_global-inicio_global
+file_name_global = f'{folder_path}/tiempo_global.csv'
+# Registro del tiempo total de ejecución
+with open(file_name_global, mode='a', newline='') as file_global:
+    writer = csv.writer(file_global)
+    writer.writerow(['tiempo'])
+    writer.writerow([total_global])
+print("listo")
