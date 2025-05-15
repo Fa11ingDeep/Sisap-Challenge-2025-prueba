@@ -7,7 +7,7 @@ import time
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from dataclasses import dataclass
-
+import heapq
 def Manhattan(v1,v2):
     """
     Calcula la distancia de Manhattan entre dos vectores v1 y v2.
@@ -76,10 +76,12 @@ def getCenters(data, c):
     newData = []  # Los vectores sin los centros
     idx = np.random.choice(n, size=math.floor(c * math.sqrt(n)), replace=False)  # Elegimos aleatoriamente c*raiz de n indices sin reposición
     # Crear los puntos y agregar a la lista de centros
-    for i in idx:
-        centers.append(Point(id=int(i), vector=data[i]))  # Crear el Point y agregarlo a centers
-    newData = [Point(id=int(i), vector=vector) for i, vector in enumerate(data)]# Enumerar los datos y crear la tupla (índice, valor) para cada elemento de data
-    newData = [item for item in newData if item.id not in idx]# Eliminar los puntos elegidos para ser centros
+    for i, vector in enumerate(data):
+       point = Point(id=int(i), vector=vector)
+       if i in idx:
+            centers.append(point)
+       else:
+            newData.append(point)
     return n, newData, centers
 
 
@@ -117,11 +119,8 @@ def makeGroups(n, data, centers, metric_fn, c, size):
                 center_dist.append((j, metric_fn(centers[i].vector, centers[j].vector)))  # Inserción en la lista (candidato a próximo centro, dist)
         center_dist.sort(key=lambda x: x[1])  # Ordenar según distancia
 
-        next_centers = []
-        for k in range(len(center_dist)):
-            next_center, dist = center_dist[k]
-            next_centers.append(next_center)
-        groups[i] = Group([LabeledPoint(point=centers[i], nearest_groups=next_centers[:2])], radius=-1,furthest_point=None)  # La segunda variable (-1) es el radio
+        next_centers = [c for c, _ in heapq.nsmallest(2, center_dist, key=lambda x: x[1])] # usamos heap dado que solo se necesitan los 2 próximos grupos
+        groups[i] = Group([LabeledPoint(point=centers[i], nearest_groups=next_centers)], radius=-1, furthest_point=None)  # La segunda variable (-1) es el radio
     # Agregar puntos a los grupos
     for h in range((maxSize - 1) * len(centers)):
         id_point = data[h]
@@ -263,8 +262,8 @@ def get_knn(k,e,target,metric_fn):
         point_element=element.point.vector
         dist=metric_fn(e,point_element) # Para cada elemento se calcula la distancia
         temp.append((dist,id_element)) # Se agrega la tupla distancia, punto
-    temp.sort(key=lambda x: x[0]) # Se ordena segun la distancia
-    return  [int(x[1]) for x in temp][:k] # Retorna los k elementos
+    k_nearest = heapq.nsmallest(k, temp, key=lambda x: x[0]) # Se ordena segun la distancia
+    return  [int(x[1]) for x in k_nearest] # Retorna los ids de los k elementos
 
 def self_sim_join(data,c1,c2,k, metric_fn):
     """
@@ -295,7 +294,8 @@ def self_sim_join(data,c1,c2,k, metric_fn):
     fin_gc = time.time()
     tiempo_ejecucion_gc = fin_gc - inicio_gc
     # Se escribe el tiempo que se tardó en obtener los centros en un csv
-    folder_path = 'root_join_floor_2_c_1_1_PCA_dim_2'
+    global folder_path
+    global fname
     os.makedirs(folder_path, exist_ok=True)
     file_name_gc = f'{folder_path}/tiempo_gc.csv'
     with open(file_name_gc, mode='a', newline='') as file_gc:
@@ -313,7 +313,7 @@ def self_sim_join(data,c1,c2,k, metric_fn):
         writer.writerow(['tiempo'])
         writer.writerow([tiempo_ejecucion_mg])
 
-    file_name = f'{folder_path}/resultados_root_join_floor_2_c_1_1_PCA_dim_2.csv'
+    file_name = f'{folder_path}/{fname}'
     with open(file_name, mode='a', newline='') as file_name_f:
         writer = csv.writer(file_name_f)
         # Escribe el nombre de las columnas si el csv estaba vacío
@@ -365,6 +365,7 @@ def self_sim_join(data,c1,c2,k, metric_fn):
 benchmark_dev_gooaq_file = h5py.File("benchmark-dev-gooaq.h5", "r") # Lectura del archivo
 x=benchmark_dev_gooaq_file['train'] # Filtra los vectores a utilizar
 folder_path = 'root_join_floor_2_c_1_1_PCA_dim_2_class'
+fname = 'resultados_root_join_floor_2_c_1_1_PCA_dim_2.csv'
 os.makedirs(folder_path, exist_ok=True)
 inicio_global=time.time()
 inicio_dim_red=inicio_global
