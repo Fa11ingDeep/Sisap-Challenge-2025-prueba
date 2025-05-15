@@ -237,3 +237,31 @@ def makeGroups(n, data, centers, metric_fn, c, size):
                 else:  # Estaba lleno el grupo
                     l += 1  # Ir al siguiente grupo
     return groups
+
+def get_knn(k,e,target,metric_fn):
+    """
+    Encuentra los k vecinos más cercanos de un punto dado usando una función de métrica.
+
+    Esta función toma un punto de entrada `e` y calcula las distancias a todos los puntos en el conjunto `target` 
+    utilizando una función de métrica (`metric_fn`). Luego, devuelve los índices de los `k` puntos más cercanos 
+    a `e`, ordenados por distancia creciente.
+
+    Parámetros:
+    k (int): El número de vecinos más cercanos que se desean obtener.
+    e (Point): El punto de referencia al que se le calcularán las distancias.
+    target (list of LabeledPoint): Una lista de objetos `LabeledPoint` que contienen los puntos a comparar.
+    metric_fn (function): Una función que calcula la distancia entre dos vectores. Esta función debe tomar dos vectores 
+                           como entrada y devolver un valor de distancia.
+
+    Retorna:
+    list: Una lista de los `k` índices de los puntos más cercanos a `e` en el conjunto `target`.
+    """
+    temp=[] # Arreglo temporal para guardar las distancias
+    target=[item for item in target if not np.array_equal(item.point.vector, e)] # Quitamos el elemento para que no aparezca de nuevo
+    for element in target:
+        id_element=element.point.id
+        point_element=element.point.vector
+        dist=metric_fn(e,point_element) # Para cada elemento se calcula la distancia
+        temp.append((dist,id_element)) # Se agrega la tupla distancia, punto
+    temp.sort(key=lambda x: x[0]) # Se ordena segun la distancia
+    return  [int(x[1]) for x in temp][:k] # Retorna los k elementos
