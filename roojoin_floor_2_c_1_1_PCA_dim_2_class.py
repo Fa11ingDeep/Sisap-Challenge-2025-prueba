@@ -265,3 +265,98 @@ def get_knn(k,e,target,metric_fn):
         temp.append((dist,id_element)) # Se agrega la tupla distancia, punto
     temp.sort(key=lambda x: x[0]) # Se ordena segun la distancia
     return  [int(x[1]) for x in temp][:k] # Retorna los k elementos
+
+def self_sim_join(data,c1,c2,k, metric_fn):
+    """
+    Función que realiza un proceso de agrupamiento de datos, cálculo de k vecinos más cercanos y 
+    escritura de los resultados en archivos CSV. Se realiza en tres fases: obtención de centros de 
+    grupos, creación de grupos basados en los centros, y cálculo de los k vecinos más cercanos para 
+    cada punto de los grupos.
+
+    Parámetros:
+    - data: np.array
+        Matriz de datos con los puntos a procesar (cada fila es un punto, cada columna es una dimensión).
+    - c1: float
+        Constante que multiplica a la cantidad de centros.
+    - c2: float
+        Constante que multiplica a al tamaño del conjunto.
+    - k: int
+        Número de vecinos más cercanos a calcular para cada punto.
+    - metric_fn: callable
+        Función que calcula la distancia entre dos puntos (por ejemplo, distancia euclidiana).
+
+    No retorna nada (por ahora). Los resultados y tiempos de ejecución se almacenan en archivos CSV.
+    """
+    batch_size=300000
+    n,d=data.shape
+
+    inicio_gc = time.time()
+    length,newData,centers=getCenters(data,c1) # Obtiene los centros
+    fin_gc = time.time()
+    tiempo_ejecucion_gc = fin_gc - inicio_gc
+    # Se escribe el tiempo que se tardó en obtener los centros en un csv
+    folder_path = 'root_join_floor_2_c_1_1_PCA_dim_2'
+    os.makedirs(folder_path, exist_ok=True)
+    file_name_gc = f'{folder_path}/tiempo_gc.csv'
+    with open(file_name_gc, mode='a', newline='') as file_gc:
+        writer = csv.writer(file_gc)
+        writer.writerow(['tiempo'])
+        writer.writerow([tiempo_ejecucion_gc])
+    inicio_mg = time.time()
+    groups=makeGroups(length,newData,centers, metric_fn, c2,math.sqrt(n)) # Crea los grupos
+    fin_mg = time.time()
+    tiempo_ejecucion_mg = fin_mg - inicio_mg
+    # Se escribe el tiempo que se tardó en generar los grupos en un csv
+    file_name_mg = f'{folder_path}/tiempo_mg.csv'
+    with open(file_name_mg, mode='a', newline='') as file_mg:
+        writer = csv.writer(file_mg)
+        writer.writerow(['tiempo'])
+        writer.writerow([tiempo_ejecucion_mg])
+
+    file_name = f'{folder_path}/resultados_root_join_floor_2_c_1_1_PCA_dim_2.csv'
+    with open(file_name, mode='a', newline='') as file_name_f:
+        writer = csv.writer(file_name_f)
+        # Escribe el nombre de las columnas si el csv estaba vacío
+        if os.stat(file_name).st_size == 0:  # Verificar si el csv estaba vacío
+            writer.writerow(['query index', 'knns_calculados'])
+        # Inicialiazación del buffer
+        result_batch = []
+        #results=[]
+        # Procesado de los grupos
+        for id, group in groups.items():
+            inicio_g = time.time()
+
+            for element in group.points:  
+                target=group.points.copy()
+                id_e = element.point.id
+                point_e = element.point.vector
+                for _ in range(1): # Por mientras se usan 2 grupos fijos
+                    next_g = element.nearest_groups[0]
+                    target+= groups[next_g].points
+                    element.nearest_groups.remove(next_g) 
+                while (len(target)<k): # Cuando se haga falta puntos aún con 2 grupos
+                    next_g = element.nearest_groups[0]
+                    target+= groups[next_g].points
+                    element.nearest_groups.remove(next_g) 
+                # Agrega el resultado al budffer
+                result_batch.append([int(id_e), get_knn(k, point_e,target, metric_fn)])
+                #results.append([int(id_e), get_knn(k, point_e,target, metric_fn)]) # Se supone que la función ejecuta esto, 
+                # Pero escribimos un csv para que sea más fácil de comparar
+                # Si se alcanza el tamaño maximo del batch, se escribe su contenido
+                if len(result_batch) >= batch_size:
+                    writer.writerows(result_batch)  # Escribe todos los elementos en batch
+                    result_batch.clear()  # Limpia el buffer
+                print(f"listo: {int(id_e)}") # Print para ver aquellos puntos que se procesaron
+            # Escribe los resultados si es que quedan algunos en el buffer
+            if result_batch:
+                writer.writerows(result_batch)
+                result_batch.clear()  # Limpia el buffer
+        fin_g = time.time()
+        tiempo_ejecucion_g = fin_g - inicio_g
+        # Se escribe el tiempo que se tardó en procesar un grupo completo
+        file_name_g = f'{folder_path}/tiempo_g.csv'
+        with open(file_name_g, mode='a', newline='') as file_g:
+            writer = csv.writer(file_g)
+            writer.writerow(['tiempo'])
+            writer.writerow([tiempo_ejecucion_g])
+    #return results
