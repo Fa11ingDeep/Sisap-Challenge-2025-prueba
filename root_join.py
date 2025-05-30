@@ -465,10 +465,12 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
     
 
     # Choose the centers
+    print("begin get_centers")
     inicio_gc = time.time()
     length, newData, centers = getCenters(data, c1)
     fin_gc = time.time()
     tiempo_ejecucion_gc = fin_gc - inicio_gc
+    print("end get_centers")
 
     os.makedirs(folder_path, exist_ok=True)
 
