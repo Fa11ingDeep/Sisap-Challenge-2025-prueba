@@ -1,5 +1,5 @@
-# Imagen base con Python 3.12
-FROM python:3.12
+# Imagen base con Python 3.10
+FROM python:3.10
 
 # Establece un directorio de trabajo
 WORKDIR /workspace
