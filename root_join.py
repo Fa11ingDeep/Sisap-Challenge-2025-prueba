@@ -478,8 +478,10 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
         writer.writerow([tiempo_ejecucion_gc])
 
     # Create the groups
+    print("begin make_Groups")
     inicio_mg = time.time()
     groups = makeGroups(length, newData, centers, metric_fn, c2, math.sqrt(n))
+    print("begin save_Groups")
     save_pickle_group(groups,f'{folder_path}')
     fin_mg = time.time()
     tiempo_ejecucion_mg = fin_mg - inicio_mg
