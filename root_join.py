@@ -262,7 +262,7 @@ def get_knn(k,e,target,metric_fn):
         dist=metric_fn(e,point_element) # For each element, compute the distance.
         temp.append((dist,id_element)) # Append the tuple (dist, id).
     k_nearest = heapq.nsmallest(k, temp, key=lambda x: x[0]) # Sort the distances.
-    return  [int(x[1]) for x in k_nearest],[int(x[0]) for x in k_nearest] # Return the indices and distances of the k nearest elements.
+    return  [int(x[1]) for x in k_nearest],[float(x[0]) for x in k_nearest] # Return the indices and distances of the k nearest elements.
 
 
 def load_pickle_group(group_id, output_dir, lock):
