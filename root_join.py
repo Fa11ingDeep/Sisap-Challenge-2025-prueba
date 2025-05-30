@@ -353,7 +353,7 @@ def process_group_parallel(args):
         point_e = element[0][1]
         nearest_groups = [elem for elem in element[1]]
 
-        for _ in range(2): ## Get points from the two nearest neighboring groups.
+        for _ in range(1): # Get points from the two nearest neighboring groups.
             if nearest_groups:
                 next_g = nearest_groups.pop(0)
                 target += [elem[0] for elem in load_pickle_group(next_g, folder_path,lock)[1]]
@@ -460,7 +460,7 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
     5. Merge the partial k-NN results from all groups into a single CSV file.
     6. Clean up temporary group and result files after processing.
     """
-    batch_size = 300000
+    batch_size = 200000
     n, d = data.shape
     
 
