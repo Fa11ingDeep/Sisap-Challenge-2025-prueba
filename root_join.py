@@ -63,7 +63,7 @@ def getCenters(data, c):
   newData = []  # List to store data points not chosen as centers.
   idx = np.random.choice(n, size=math.floor(c * math.sqrt(n)), replace=False)  # choose randomly c*sqrt(n) indices.
   # Separate data points into centers and newData.
-  for i, vector in enumerate(data):
+  for i, vector in enumerate(data, start=1):
       point = (int(i), vector)
       if i in idx:
            centers.append(point)
