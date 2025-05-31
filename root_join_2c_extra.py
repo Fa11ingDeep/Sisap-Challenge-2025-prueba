@@ -353,7 +353,7 @@ def process_group_parallel(args):
         point_e = element[0][1]
         nearest_groups = [elem for elem in element[1]]
 
-        for _ in range(1): # Get points from the two nearest neighboring groups.
+        for _ in range(2): # Get points from the two nearest neighboring groups.
             if nearest_groups:
                 next_g = nearest_groups.pop(0)
                 target += [elem[0] for elem in load_pickle_group(next_g, folder_path,lock)[1]]
@@ -624,18 +624,18 @@ def run(dataset, task, k):
     f.close()
     
     # dimentionarity reduction.
-    #ini_dim_red=time.time()
-    #scaler = StandardScaler()
-    #X_scaled = scaler.fit_transform(data)
-    #pca = PCA(n_components=0.8)
-    #X_pca = pca.fit_transform(X_scaled)
-    #print(f"pca_dim is: {X_pca.shape[1]}")
-    #fin_dim_red = time.time()
-    #d_dim_red = fin_dim_red - ini_dim_red
+    ini_dim_red=time.time()
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(data)
+    pca = PCA(n_components=0.8)
+    X_pca = pca.fit_transform(X_scaled)
+    print(f"pca_dim is: {X_pca.shape[1]}")
+    fin_dim_red = time.time()
+    d_dim_red = fin_dim_red - ini_dim_red
 
     ini_global = time.time()
     # Perform self-similarity join.
-    self_sim_join(data, 0.5, 2, k, cos_sim,folder_path,fname)
+    self_sim_join(X_pca, 1, 1, k, cos_sim,folder_path,fname)
     # read the CSV using pandas
     df = pd.read_csv(f"{folder_path}/{fname}.csv")
     # Sort the DataFrame by 'id'.
@@ -655,7 +655,7 @@ def run(dataset, task, k):
     total_global = fin_global - ini_global
     try:
         # Store the final results.
-        store_results(os.path.join("results/", dataset, task, f"root_join.h5"), 'Root_Join', 'gooaq', 'task2', D, I, 0, total_global, f'root_join_params: 1,1')
+        store_results(os.path.join("results/", dataset, task, f"root_join.h5"), 'Root_Join', 'gooaq', 'task2', D, I, d_dim_red, total_global, f'root_join_params: 1,1; PCA params: 0.8')
         # Remove temporary results folder.
         #shutil.rmtree("temporary")
     except Exception as e:
