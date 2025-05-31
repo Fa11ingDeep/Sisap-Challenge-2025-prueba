@@ -14,7 +14,7 @@ The steps are the following:
 3. Run
 4. Evaluate
 
-The full set of installation instructions are listed in the [GitHub Actions workflow](https://github.com/Fa11ingDeep/Sisap-Challenge-2025-prueba/blob/main/.github/workflows/ci.yml)
+The full set of installation instructions are listed in the [GitHub Actions workflow](https://github.com/Fa11ingDeep/Sisap-Challenge-2025-prueba/blob/main/.github/workflows/ci.yml).
 
 ## Clone the repository
 
