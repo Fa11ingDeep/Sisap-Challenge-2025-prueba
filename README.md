@@ -1,6 +1,6 @@
 # Root Join (Task 2)
 
-This repository is based on the sisap25-example-python repository and contains a Python implementation of the Root Join algorithm (as described in this paper), combined with various techniques designed to solve Task 2 of the SISAP 2025 Indexing Challenge.
+This repository is based on the [sisap25-example-python repository](https://github.com/sisap-challenges/sisap25-example-python) and contains a Python implementation of the Root Join algorithm (as described in this [paper](https://www.sciencedirect.com/science/article/pii/S0306437920300211?via%3Dihub)), combined with various techniques designed to solve Task 2 of the [SISAP 2025 Indexing Challenge](https://sisap-challenges.github.io/2025/index.html).
 
 
 ## Step for running
@@ -14,7 +14,7 @@ The steps are the following:
 3. Run
 4. Evaluate
 
-The full set of installation instructions are listed in the GitHub Actions workflow
+The full set of installation instructions are listed in the [GitHub Actions workflow](https://github.com/Fa11ingDeep/Sisap-Challenge-2025-prueba/blob/main/.github/workflows/ci.yml)
 
 ## Clone the repository
 
