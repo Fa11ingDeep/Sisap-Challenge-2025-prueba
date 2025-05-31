@@ -29,7 +29,7 @@ def get_recall(I, gt, k):
     n = len(I)
     recall = 0
     for i in range(n):
-        recall += len(set(I[i, :k]) & set(gt[i, :k]))
+        recall += len(set(I[i, :k]) & set(gt[i, 1:k+1])) # the first element of the gt is the index of the query.
     return recall / (n * k)
 
 
