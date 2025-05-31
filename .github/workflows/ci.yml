@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags: '*'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Python 3.12 - Ubuntu - x64
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: 'true'
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run benchmark
+        run: |
+          python root_join.py --task task2 --dataset gooaq
+          python eval.py results.csv
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Results
+          path: |
+            results.csv
