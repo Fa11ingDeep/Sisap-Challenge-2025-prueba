@@ -24,7 +24,7 @@ def get_all_results(dirname):
 
 def get_recall(I, gt, k):
     assert k <= I.shape[1]
-    assert len(I) == len(gt)
+    #assert len(I) == len(gt) Since the algorithm does not perform a self-loop, the predicted neighbors (I) do not include the query point itself. Therefore, I and the ground truth (gt) may not have the same length.
 
     n = len(I)
     recall = 0

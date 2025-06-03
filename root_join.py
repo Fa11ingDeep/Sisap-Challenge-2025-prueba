@@ -353,7 +353,7 @@ def process_group_parallel(args):
         point_e = element[0][1]
         nearest_groups = [elem for elem in element[1]]
 
-        for _ in range(1): # Get points from the two nearest neighboring groups.
+        for _ in range(1): # Get points from the one nearest neighboring groups.
             if nearest_groups:
                 next_g = nearest_groups.pop(0)
                 target += [elem[0] for elem in load_pickle_group(next_g, folder_path,lock)[1]]
