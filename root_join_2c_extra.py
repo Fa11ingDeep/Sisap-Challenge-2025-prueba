@@ -16,6 +16,8 @@ import argparse
 import shutil
 import ast
 
+lock=Lock() # Global lock
+
 def cos_sim(v1, v2):
     """
     Calculates the cosine similarity between two normalized vectors v1 and v2.
@@ -310,8 +312,6 @@ def load_pickle_group(group_id, output_dir, lock):
         return None
 
 
-lock=Lock() # Global lock
-
 def process_group_parallel(args):
     """
     Process a group of elements in parallel to compute k-nearest neighbors (k-NN)
@@ -339,7 +339,7 @@ def process_group_parallel(args):
             - group_id (int): Identifier of the processed group.
             - duration (float): Time taken to process the group in seconds.
     """
-    group_id, group, k, metric_fn, batch_size, folder_path, fname= args # Unpack the arguments.
+    group_id, group, k, metric_fn, batch_size, folder_path, fname, lock= args # Unpack the arguments.
     result_batch = []
     print(f"Processing group {group_id}.")
     start = time.time()
@@ -496,7 +496,7 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
     # Create shared objects between processes.
     print("begin self_join")
     args_list = [
-        (group_id, group, k, metric_fn, batch_size, folder_path, fname)
+        (group_id, group, k, metric_fn, batch_size, folder_path, fname, lock)
         for group_id, group in groups.items()
     ]
 
