@@ -16,7 +16,13 @@ import argparse
 import shutil
 import ast
 
-lock=Lock() # Global lock
+#lock=Lock() # Global lock
+
+lock = None  # variable global que será el lock compartido
+
+def init_pool(l):
+    global lock
+    lock = l
 
 def cos_sim(v1, v2):
     """
@@ -339,7 +345,7 @@ def process_group_parallel(args):
             - group_id (int): Identifier of the processed group.
             - duration (float): Time taken to process the group in seconds.
     """
-    group_id, group, k, metric_fn, batch_size, folder_path, fname, lock= args # Unpack the arguments.
+    group_id, group, k, metric_fn, batch_size, folder_path, fname= args # Unpack the arguments.
     result_batch = []
     print(f"Processing group {group_id}.")
     start = time.time()
@@ -496,14 +502,15 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
     # Create shared objects between processes.
     print("begin self_join")
     args_list = [
-        (group_id, group, k, metric_fn, batch_size, folder_path, fname, lock)
+        (group_id, group, k, metric_fn, batch_size, folder_path, fname)
         for group_id, group in groups.items()
     ]
 
     #num_cores = max(8, os.cpu_count())
     # Initialize the processes.
+    lock = Lock() 
     num_cores=8
-    with Pool(processes=num_cores) as pool:
+    with Pool(processes=num_cores, initializer=init_pool, initargs=(lock,)) as pool:
         tiempos = pool.map(process_group_parallel, args_list)
     print("finish self_join")
 
