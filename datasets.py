@@ -26,7 +26,7 @@ DATASETS = {
         'task2': {
             'url': 'https://huggingface.co/datasets/sadit/SISAP2025/resolve/main/benchmark-dev-gooaq.h5?download=true',
             'queries': lambda x: x['train'],
-            'data': lambda x: x['train'],
+            'data': lambda x: x['train'][:1000],
             'gt_url': 'https://huggingface.co/datasets/sadit/SISAP2025/resolve/main/allknn-benchmark-dev-gooaq.h5?download=true',
             'gt_I': lambda x: x['knns'],
             'k': 15,

@@ -15,7 +15,7 @@ from datasets import DATASETS, prepare, get_fn
 import argparse
 import shutil
 import ast
-
+from memory_profiler import memory_usage
 
 lock = None 
 
@@ -293,7 +293,9 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
 
     # Create the groups
     print("begin make_Groups")
+    begin_make_group=time.time()
     groups = makeGroups(length, newData, centers, metric_fn, c2, math.sqrt(n))
+    end_make_group=time.time()
     print("begin save_Groups")
     save_pickle_group(groups,f'{folder_path}')
 
@@ -305,6 +307,7 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
     ]
 
     # Initialize the processes.
+    begin_queries=time.time()
     lock = Lock() 
     num_cores=os.cpu_count()-2
     with Pool(processes=num_cores, initializer=init_pool, initargs=(lock,)) as pool:
@@ -331,6 +334,8 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
             temp_file_1 = f"{folder_path}/group_{group_id}.pkl"
             if os.path.exists(temp_file_1):
                 os.remove(temp_file_1)
+    end_queries=time.time()
+    return (end_make_group-begin_make_group), (end_queries-begin_queries)
 
 def store_results(dst, algo, dataset, task, D, I, buildtime, querytime, params):
 
@@ -362,7 +367,15 @@ def safe_literal_eval(val, dtype):
     except (ValueError, SyntaxError) as e:
         print(f"Error while processing value: {val} with error: {e}")
         return np.array([])
-    
+
+def dim_reduction(data):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(data)
+    pca = PCA(n_components=0.8)
+    X_pca = pca.fit_transform(X_scaled)
+    print(f"pca_dim is: {X_pca.shape[1]}")
+    return X_pca
+
 def run(dataset, task, k):
 
     print(f'Running {task} on {dataset}')
@@ -383,17 +396,13 @@ def run(dataset, task, k):
     
     # dimentionarity reduction.
     ini_dim_red=time.time()
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(data)
-    pca = PCA(n_components=0.8)
-    X_pca = pca.fit_transform(X_scaled)
-    print(f"pca_dim is: {X_pca.shape[1]}")
+    mem_usage, X_pca = memory_usage((dim_reduction, (data,)), retval=True, max_usage=True, max_iterations=1)
     fin_dim_red = time.time()
     d_dim_red = fin_dim_red - ini_dim_red
 
-    ini_global = time.time()
     # Perform self-similarity join.
-    self_sim_join(X_pca, 1, 1 , k, cos_sim,folder_path,fname)
+    mem_join_usage, join_result = memory_usage((self_sim_join, (X_pca, 1, 1, k, cos_sim, folder_path, fname)), retval=True, max_usage=True, max_iterations=1)
+    make_groups_time, queries_time = join_result
     # read the CSV using pandas
     df = pd.read_csv(f"{folder_path}/{fname}.csv")
     # Sort the DataFrame by 'id'.
@@ -409,11 +418,9 @@ def run(dataset, task, k):
     I = np.vstack(knns)
     D = np.vstack(dists)
     
-    fin_global = time.time()
-    total_global = fin_global - ini_global
     try:
         # Store the final results.
-        store_results(os.path.join("results/", dataset, task, f"root_join.h5"), 'Root_Join', 'gooaq', 'task2', D, I, d_dim_red, total_global, f'root_join_params: 1,1; PCA params: 0.8; zero')
+        store_results(os.path.join("results/", dataset, task, f"root_join.h5"), 'Root_Join', 'gooaq', 'task2', D, I, d_dim_red+make_groups_time, queries_time, f'root_join_params: 1,1; PCA params: 0.8; zero; Max memory used during dim reduction: {mem_usage} MiB; Max memory used during self_sim_join: {mem_join_usage} MiB')
         # Remove temporary results folder.
         shutil.rmtree("temporary")
     except Exception as e:
