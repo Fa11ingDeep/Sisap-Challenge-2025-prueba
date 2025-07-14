@@ -15,53 +15,24 @@ from datasets import DATASETS, prepare, get_fn
 import argparse
 import shutil
 import ast
+from memory_profiler import memory_usage
+
+lock = None 
+
+def init_pool(l):
+    global lock
+    lock = l
 
 def cos_sim(v1, v2):
-    """
-    Calculates the cosine similarity between two normalized vectors v1 and v2.
-
-    Cosine similarity measures the similarity between two vectors in a feature space
-    by comparing the angle between them. The returned value ranges from -1 (completely
-    opposite) to 1 (identical), with 0 indicating no similarity.
-
-    Note:
-    Both v1 and v2 should be normalized to unit length (i.e., their magnitude should be 1)
-    before calling this function.
-
-    Parameters:
-    v1 (array-like): First normalized vector.
-    v2 (array-like): Second normalized vector.
-
-    Returns:
-    float: The cosine similarity between v1 and v2.
-    """
     return  1-(np.dot(v1,v2))
 
 
 def getCenters(data, c):
-  """
-    Selects a subset of centers randomly from the dataset.
 
-    This function takes a dataset and a parameter c, then randomly selects
-    approximately c * sqrt(n) indices as centers, where n is the number of vectors
-    in the data. It returns the total number of vectors, the data points not chosen
-    as centers, and the chosen centers as (index, vector) tuples.
-
-    Parameters:
-    data (numpy.ndarray): The dataset, expected to be a 2D array with shape (n, d),
-                          where n is the number of vectors and d is their dimensionality.
-    c (float): Scaling factor for the number of centers, used in the formula c * sqrt(n).
-
-    Returns:
-    tuple:
-        n (int): Number of vectors in the dataset.
-        newData (list of tuples): Data points not selected as centers, each as (index, vector).
-        centers (list of tuples): Selected centers, each as (index, vector).
-    """
   n, d = data.shape  # Get the amount of vectors from the datas.
   centers = []  # List to store chosen centers.
   newData = []  # List to store data points not chosen as centers.
-  idx = np.random.choice(n, size=math.floor(c * math.sqrt(n)), replace=False)  # choose randomly c*sqrt(n) indices.
+  idx = np.random.choice(np.arange(1, n + 1), size=math.floor(c * math.sqrt(n)), replace=False) # choose randomly c*sqrt(n) indices.
   # Separate data points into centers and newData.
   for i, vector in enumerate(data, start=1):
       point = (int(i), vector)
@@ -73,42 +44,6 @@ def getCenters(data, c):
 
 
 def makeGroups(n, data, centers, metric_fn, c, size):
-    """
-    Groups `n` data points into clusters based on proximity to initial centers, 
-    with optional group size extension and radius tracking.
-
-    Parameters
-    ----------
-    n : int
-        Total number of data points to group.
-    data : list of tuple
-        List of tuples (id, vector) representing data points.
-    centers : list of tuple
-        List of initial centers, each a tuple (id, vector).
-    metric_fn : callable
-        Function used to calculate the distance between vectors.
-    c : float
-        Proportion constant used to determine initial group capacity.
-    size : int
-        Reference size for computing the maximum group size.
-
-    Returns
-    -------
-    groups : dict
-        Dictionary where each key is a group ID (int) and each value is a tuple:
-        ([((id, vector), [nearest_centers])], radius, farthest_point)
-        - The list contains the group points and the two closest neighboring centers.
-        - `radius` is the greatest distance from the center to any point in the group.
-        - `farthest_point` is the point at that maximum distance (or None if not set).
-
-    Notes
-    -----
-    - The function assigns each point to the nearest available group center,
-      ensuring that no group exceeds the maximum allowed size.
-    - If necessary, group sizes are extended to accommodate all points.
-    - In some cases, points may be swapped to maintain balance and radius constraints.
-    - Each group retains a list of the two nearest other centers for future reference.
-    """
 
     maxSize = math.floor(c * size) # Maximum size of a group.
     groups = {} # Dictionary to store the groups.
@@ -239,21 +174,7 @@ def makeGroups(n, data, centers, metric_fn, c, size):
 
 
 def get_knn(k,e,target,metric_fn):
-    """
-    Compute the k-nearest neighbors (k-NN) of a given element from a set of target elements using a custom distance function.
 
-    Parameters:
-        k (int): The number of nearest neighbors to return.
-        e (np.ndarray): The query element for which the nearest neighbors are to be found.
-        target (List[Tuple[int, np.ndarray]]): A list of tuples where each tuple contains an identifier (int)
-                                               and a data point (np.ndarray).
-        metric_fn (Callable[[np.ndarray, np.ndarray], float]): A function that computes the distance between two vectors.
-
-    Returns:
-        Tuple[List[int], List[float]]: 
-            - A list of the identifiers of the k nearest neighbors of the element `e`, sorted by increasing distance.
-            - A corresponding list of their distances.
-    """
     temp=[] # Temporary array to store the distances.
     target=[item for item in target if not np.array_equal(item[1], e)] # Remove the element from the target.
     for element in target:
@@ -266,29 +187,7 @@ def get_knn(k,e,target,metric_fn):
 
 
 def load_pickle_group(group_id, output_dir, lock):
-    """
-    Load a pickled group file from the specified directory in a thread/process-safe manner.
 
-    This function attempts to load a pickle (.pkl) file corresponding to a specific group ID.
-    It uses a synchronization lock to ensure that only one process or thread accesses the file
-    at a time, which is important in concurrent or parallel environments.
-
-    Parameters:
-    ----------
-    group_id : int
-        The identifier of the group whose data should be loaded.
-    output_dir : str
-        The directory where group pickle files are stored.
-    lock : multiprocessing.Lock or threading.Lock
-        A synchronization lock used to control access to the file.
-
-    Returns:
-    -------
-    Any
-        The data loaded from the pickle file if successful.
-        Returns None if the file does not exist, if there is a permission issue,
-        or if another exception occurs during the loading process.
-    """
     group_file_path = os.path.join(output_dir, f"group_{group_id}.pkl")
 
     # Check if the file exists
@@ -310,35 +209,8 @@ def load_pickle_group(group_id, output_dir, lock):
         return None
 
 
-lock=Lock() # Global lock
-
 def process_group_parallel(args):
-    """
-    Process a group of elements in parallel to compute k-nearest neighbors (k-NN)
-    and write the results to a CSV file in batches.
 
-    This function is intended to be run in parallel (e.g., with multiprocessing). It 
-    computes the k-nearest neighbors for each element in a group using a provided 
-    distance metric. It also extends the search to include points from the two closest 
-    neighboring groups (based on precomputed proximity).
-
-    Args:
-        args (tuple): A tuple containing the following elements:
-            - group_id (int): Identifier of the group being processed.
-            - group (tuple): A tuple where the first element is a list of elements in the group.
-              Each element is a tuple containing:
-                - ((id, vector), [neighboring_group_ids])
-            - k (int): Number of nearest neighbors to compute.
-            - metric_fn (callable): Function that takes two vectors and returns a distance metric.
-            - batch_size (int): Number of records to write at once to reduce I/O operations.
-            - folder_path (str): Path to the directory where group pickle files are stored.
-            - fname (str): Prefix for the output CSV filename.
-
-    Returns:
-        tuple: A tuple (group_id, duration), where:
-            - group_id (int): Identifier of the processed group.
-            - duration (float): Time taken to process the group in seconds.
-    """
     group_id, group, k, metric_fn, batch_size, folder_path, fname= args # Unpack the arguments.
     result_batch = []
     print(f"Processing group {group_id}.")
@@ -353,7 +225,7 @@ def process_group_parallel(args):
         point_e = element[0][1]
         nearest_groups = [elem for elem in element[1]]
 
-        for _ in range(1): # Get points from the one nearest neighboring groups.
+        for _ in range(2): # Get points from the two nearest neighboring groups.
             if nearest_groups:
                 next_g = nearest_groups.pop(0)
                 target += [elem[0] for elem in load_pickle_group(next_g, folder_path,lock)[1]]
@@ -387,26 +259,7 @@ def process_group_parallel(args):
 
 
 def save_pickle_group(groups, output_dir):
-    """
-    Saves each group of data as a separate .pkl file in the specified output directory.
 
-    Each group is serialized using the pickle module and saved with a filename format
-    of 'group_<group_id>.pkl'. The function ensures that the output directory exists,
-    creating it if necessary.
-
-    Parameters:
-    ----------
-    groups : dict
-        A dictionary where each key is a group ID and each value is a tuple:
-        (group_points, radius, furthest_point). Only group_points and group_id are saved.
-    
-    output_dir : str
-        The path to the directory where the group files should be saved.
-
-    Returns:
-    -------
-    None
-    """
     # Create the directory if it does not exist.
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -420,79 +273,32 @@ def save_pickle_group(groups, output_dir):
             # Serialize the tuple.
             pickle.dump((group_id,group_points), grupo_file)
 
-        print(f"Archivo .pkl para el grupo {group_id} guardado en {group_file_path}")
+        print(f".pkl file for group {group_id} saved in {group_file_path}")
 
 
 
 
 def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
-    """
-    Perform a self-similarity join on a dataset using a clustering-based approach.
 
-    This function partitions the dataset into groups based on proximity to selected centers.
-    It then performs a k-nearest neighbor search in parallel within and across nearby groups,
-    aggregating the results into a single CSV file.
-
-    Parameters:
-    -----------
-    data : numpy.ndarray
-        A 2D array where each row represents a data point.
-    c1 : int or float
-        A parameter that controls the number or selection strategy of cluster centers.
-    c2 : int or float
-        A parameter that determines the grouping radius or group density.
-    k : int
-        The number of nearest neighbors to retrieve for each data point.
-    metric_fn : callable
-        A function that computes the distance or similarity between two data points.
-    folder_path : str
-        The directory path where intermediate and final output files will be saved.
-    fname : str
-        The base name for the output files.
-
-    Steps:
-    ------
-    1. Select cluster centers from the dataset using `getCenters`.
-    2. Create groups of data points based on their proximity to the centers using `makeGroups`.
-    3. Persist the grouped data to disk using `save_pickle_group`.
-    4. Prepare tasks for multiprocessing and distribute them using `process_group_parallel` to perform
-       local k-NN searches.
-    5. Merge the partial k-NN results from all groups into a single CSV file.
-    6. Clean up temporary group and result files after processing.
-    """
     batch_size = 200000
     n, d = data.shape
     
 
     # Choose the centers
     print("begin get_centers")
-    inicio_gc = time.time()
     length, newData, centers = getCenters(data, c1)
-    fin_gc = time.time()
-    tiempo_ejecucion_gc = fin_gc - inicio_gc
-    print("end get_centers")
 
     os.makedirs(folder_path, exist_ok=True)
 
-    with open(f'{folder_path}/tiempo_gc.csv', mode='a', newline='') as file_gc:
-        writer = csv.writer(file_gc)
-        writer.writerow(['tiempo'])
-        writer.writerow([tiempo_ejecucion_gc])
 
     # Create the groups
     print("begin make_Groups")
-    inicio_mg = time.time()
+    begin_make_group=time.time()
     groups = makeGroups(length, newData, centers, metric_fn, c2, math.sqrt(n))
+    end_make_group=time.time()
     print("begin save_Groups")
     save_pickle_group(groups,f'{folder_path}')
-    fin_mg = time.time()
-    tiempo_ejecucion_mg = fin_mg - inicio_mg
-    
 
-    with open(f'{folder_path}/tiempo_mg.csv', mode='a', newline='') as file_mg:
-        writer = csv.writer(file_mg)
-        writer.writerow(['tiempo'])
-        writer.writerow([tiempo_ejecucion_mg])
     # Create shared objects between processes.
     print("begin self_join")
     args_list = [
@@ -500,10 +306,11 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
         for group_id, group in groups.items()
     ]
 
-    #num_cores = max(8, os.cpu_count())
     # Initialize the processes.
-    num_cores=8
-    with Pool(processes=num_cores) as pool:
+    begin_queries=time.time()
+    lock = Lock() 
+    num_cores=os.cpu_count()-2
+    with Pool(processes=num_cores, initializer=init_pool, initargs=(lock,)) as pool:
         tiempos = pool.map(process_group_parallel, args_list)
     print("finish self_join")
 
@@ -527,45 +334,15 @@ def self_sim_join(data, c1, c2, k, metric_fn, folder_path, fname):
             temp_file_1 = f"{folder_path}/group_{group_id}.pkl"
             if os.path.exists(temp_file_1):
                 os.remove(temp_file_1)
-
-    # Save processing times by group.
-    with open(f"{folder_path}/tiempo_g.csv", mode='w', newline='') as file_g:
-        writer = csv.writer(file_g)
-        writer.writerow(['grupo', 'tiempo'])
-        for gid, tiempo in tiempos:
-            writer.writerow([gid, tiempo])
+    end_queries=time.time()
+    return (end_make_group-begin_make_group), (end_queries-begin_queries)
 
 def store_results(dst, algo, dataset, task, D, I, buildtime, querytime, params):
-    """
-    Stores the results of a nearest neighbors algorithm into an HDF5 file.
 
-    Parameters:
-    ----------
-    dst : str or Path
-        Path to the output HDF5 file.
-    algo : str
-        Name of the algorithm used.
-    dataset : str
-        Name or identifier of the dataset.
-    task : str
-        Task type (e.g., "knn", "similarity-join", etc.).
-    D : np.ndarray
-        Array containing the distances between query and neighbor vectors.
-    I : np.ndarray
-        Array containing the indices of nearest neighbors.
-    buildtime : float
-        Time taken to build the index or prepare the algorithm.
-    querytime : float
-        Time taken to perform the query.
-    params : dict or str
-        Parameters used in the algorithm (can be serialized).
-    """
     os.makedirs(Path(dst).parent, exist_ok=True)
 
     try:
         if I.shape == D.shape:
-            #print(f"Data type of I: {I.dtype}")
-            #print(f"Data type of D: {D.dtype}")
 
             with h5py.File(dst, 'w') as f:
                 f.attrs['algo'] = algo
@@ -584,27 +361,21 @@ def store_results(dst, algo, dataset, task, D, I, buildtime, querytime, params):
 
 # Conversion functions with error handling.
 def safe_literal_eval(val, dtype):
-    """
-    Safely evaluates a string representation of a Python literal and converts it into a NumPy array 
-    with the specified data type.
 
-    This function uses `ast.literal_eval` to safely parse the input string into a Python literal (e.g., list or tuple)
-    and then converts the result into a NumPy array of the given dtype. If parsing or conversion fails,
-    it returns an empty NumPy array.
-
-    Parameters:
-        val (str): The string to be safely evaluated and converted.
-        dtype (data-type): The desired NumPy data type for the resulting array.
-
-    Returns:
-        np.ndarray: A NumPy array with the specified dtype if successful, otherwise an empty array.
-    """
     try:
         return np.array(ast.literal_eval(val), dtype=dtype)  # Convert to an array with the specified data type.
     except (ValueError, SyntaxError) as e:
         print(f"Error while processing value: {val} with error: {e}")
         return np.array([])
-    
+
+def dim_reduction(data):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(data)
+    pca = PCA(n_components=0.8)
+    X_pca = pca.fit_transform(X_scaled)
+    print(f"pca_dim is: {X_pca.shape[1]}")
+    return X_pca
+
 def run(dataset, task, k):
 
     print(f'Running {task} on {dataset}')
@@ -625,17 +396,13 @@ def run(dataset, task, k):
     
     # dimentionarity reduction.
     ini_dim_red=time.time()
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(data)
-    pca = PCA(n_components=0.8)
-    X_pca = pca.fit_transform(X_scaled)
-    print(f"pca_dim is: {X_pca.shape[1]}")
+    mem_usage, X_pca = memory_usage((dim_reduction, (data,)), retval=True, max_usage=True, max_iterations=1)
     fin_dim_red = time.time()
     d_dim_red = fin_dim_red - ini_dim_red
 
-    ini_global = time.time()
     # Perform self-similarity join.
-    self_sim_join(X_pca, 1, 1, k, cos_sim,folder_path,fname)
+    mem_join_usage, join_result = memory_usage((self_sim_join, (X_pca, 1, 1, k, cos_sim, folder_path, fname)), retval=True, max_usage=True, max_iterations=1)
+    make_groups_time, queries_time = join_result
     # read the CSV using pandas
     df = pd.read_csv(f"{folder_path}/{fname}.csv")
     # Sort the DataFrame by 'id'.
@@ -651,13 +418,11 @@ def run(dataset, task, k):
     I = np.vstack(knns)
     D = np.vstack(dists)
     
-    fin_global = time.time()
-    total_global = fin_global - ini_global
     try:
         # Store the final results.
-        store_results(os.path.join("results/", dataset, task, f"root_join.h5"), 'Root_Join', 'gooaq', 'task2', D, I, d_dim_red, total_global, f'root_join_params: 1,1; PCA params: 0.8')
+        store_results(os.path.join("results/", dataset, task, f"root_join.h5"), 'Root_Join', 'gooaq', 'task2', D, I, d_dim_red+make_groups_time, queries_time, f'root_join_params: 1,1; PCA params: 0.8; zero; Max memory used during dim reduction: {mem_usage} MiB; Max memory used during self_sim_join: {mem_join_usage} MiB')
         # Remove temporary results folder.
-        #shutil.rmtree("temporary")
+        shutil.rmtree("temporary")
     except Exception as e:
         print(f"Error while saving the file: {e}")
 
