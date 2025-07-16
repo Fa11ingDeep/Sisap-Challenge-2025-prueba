@@ -7,7 +7,7 @@ import time
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import heapq
-from multiprocessing import Pool, freeze_support, Lock
+from multiprocessing import Pool, freeze_support, Lock, Process, Queue
 import pickle
 from pathlib import Path
 import pandas as pd
@@ -16,7 +16,7 @@ import argparse
 import shutil
 import ast
 from memory_profiler import memory_usage
-
+import psutil
 lock = None 
 
 def init_pool(l):
@@ -223,12 +223,12 @@ def process_group_parallel(args):
         target = [elem[0] for elem in group[0]]
         id_e = element[0][0]
         point_e = element[0][1]
-        #nearest_groups = [elem for elem in element[1]]
+        nearest_groups = [elem for elem in element[1]]
 
-        #for _ in range(2): # Get points from the two nearest neighboring groups.
-        #    if nearest_groups:
-        #        next_g = nearest_groups.pop(0)
-        #        target += [elem[0] for elem in load_pickle_group(next_g, folder_path,lock)[1]]
+        for _ in range(0): # Get points from the two nearest neighboring groups.
+            if nearest_groups:
+                next_g = nearest_groups.pop(0)
+                target += [elem[0] for elem in load_pickle_group(next_g, folder_path,lock)[1]]
 
         # The following block is useful in the original root_join implementation:
         #while len(target) < k and nearest_groups:
@@ -376,55 +376,126 @@ def dim_reduction(data):
     print(f"pca_dim is: {X_pca.shape[1]}")
     return X_pca
 
-def run(dataset, task, k):
+def worker_self_sim_join(q, *args):
+    result = self_sim_join(*args)
+    q.put(result)
 
+def run_with_memory_profiling(dataset, task, k):
     print(f'Running {task} on {dataset}')
-
-    # Create fold and filename to store the temporary results.
-    folder_path=os.path.join("temporary/", dataset, task)
-    fname=f"root_join_{dataset}_{task}"
-
+    
+    folder_path = os.path.join("temporary/", dataset, task)
+    fname = f"root_join_{dataset}_{task}"
     os.makedirs(folder_path, exist_ok=True)
-    # Prepare the dataset.
+    
     prepare(dataset, task)
-
-    # Load the datas.
+    
     fn, _ = get_fn(dataset, task)
     f = h5py.File(fn)
     data = np.array(DATASETS[dataset][task]['data'](f))
     f.close()
     
-    # dimentionarity reduction.
-    ini_dim_red=time.time()
+    ini_dim_red = time.time()
     mem_usage, X_pca = memory_usage((dim_reduction, (data,)), retval=True, max_usage=True, max_iterations=1)
     fin_dim_red = time.time()
     d_dim_red = fin_dim_red - ini_dim_red
+    
+    q = Queue()
+    p = Process(target=worker_self_sim_join, args=(q, X_pca, 1, 1, k, cos_sim, folder_path, fname))
+    p.start()
 
-    # Perform self-similarity join.
-    mem_join_usage, join_result = memory_usage((self_sim_join, (X_pca, 1, 1, k, cos_sim, folder_path, fname)), retval=True, max_usage=True, max_iterations=1)
+    mem_usage_list = []
+    proc = psutil.Process(p.pid)
+
+    while p.is_alive():
+        try:
+            mem = proc.memory_info().rss / (1024 * 1024)  # Memoria en MB
+            mem_usage_list.append(mem)
+        except psutil.NoSuchProcess:
+            # Si el proceso ya terminó mientras preguntamos
+            break
+        time.sleep(0.1)  # Esperar 0.1s antes de la próxima medición
+
+    p.join()
+    
+    max_mem = max(mem_usage_list) if mem_usage_list else None
+    join_result = q.get() if not q.empty() else None
+    
     make_groups_time, queries_time = join_result
-    # read the CSV using pandas
+    
     df = pd.read_csv(f"{folder_path}/{fname}.csv")
-    # Sort the DataFrame by 'id'.
     df = df.sort_values(by='id')
-    # Clean possible whitespace and quotes.
     df['knns'] = df['knns'].str.strip().str.replace('"', '')
     df['dists'] = df['dists'].str.strip().str.replace('"', '')
-    
-    # Convert the 'knns' and 'dists' columns from texts to lists.
     knns = df['knns'].apply(lambda x: safe_literal_eval(x, dtype=int))
     dists = df['dists'].apply(lambda x: safe_literal_eval(x, dtype=float))
-    # Convert to Numpy matrices.
     I = np.vstack(knns)
     D = np.vstack(dists)
     
     try:
-        # Store the final results.
-        store_results(os.path.join("results/", dataset, task, f"root_join.h5"), 'Root_Join', 'gooaq', 'task2', D, I, d_dim_red+make_groups_time, queries_time, f'root_join_params: 1,1; PCA params: 0.8; zero; Max memory used during dim reduction: {mem_usage} MiB; Max memory used during self_sim_join: {mem_join_usage} MiB')
-        # Remove temporary results folder.
+        store_results(
+            os.path.join("results/", dataset, task, f"root_join.h5"),
+            'Root_Join',
+            'gooaq',
+            'task2',
+            D,
+            I,
+            d_dim_red + make_groups_time,
+            queries_time,
+            f'root_join_params: 1,1; PCA params: 0.8; zero; Max memory used during dim reduction: {mem_usage} MiB; Max memory used during self_sim_join: {max_mem} MiB'
+        )
         shutil.rmtree("temporary")
     except Exception as e:
         print(f"Error while saving the file: {e}")
+
+# def run(dataset, task, k):
+
+#     print(f'Running {task} on {dataset}')
+
+#     # Create fold and filename to store the temporary results.
+#     folder_path=os.path.join("temporary/", dataset, task)
+#     fname=f"root_join_{dataset}_{task}"
+
+#     os.makedirs(folder_path, exist_ok=True)
+#     # Prepare the dataset.
+#     prepare(dataset, task)
+
+#     # Load the datas.
+#     fn, _ = get_fn(dataset, task)
+#     f = h5py.File(fn)
+#     data = np.array(DATASETS[dataset][task]['data'](f))
+#     f.close()
+    
+#     # dimentionarity reduction.
+#     ini_dim_red=time.time()
+#     mem_usage, X_pca = memory_usage((dim_reduction, (data,)), retval=True, max_usage=True, max_iterations=1)
+#     fin_dim_red = time.time()
+#     d_dim_red = fin_dim_red - ini_dim_red
+
+#     # Perform self-similarity join.
+#     mem_join_usage, join_result = memory_usage((self_sim_join, (X_pca, 1, 1, k, cos_sim, folder_path, fname)), retval=True, max_usage=True, max_iterations=1)
+#     make_groups_time, queries_time = join_result
+#     # read the CSV using pandas
+#     df = pd.read_csv(f"{folder_path}/{fname}.csv")
+#     # Sort the DataFrame by 'id'.
+#     df = df.sort_values(by='id')
+#     # Clean possible whitespace and quotes.
+#     df['knns'] = df['knns'].str.strip().str.replace('"', '')
+#     df['dists'] = df['dists'].str.strip().str.replace('"', '')
+    
+#     # Convert the 'knns' and 'dists' columns from texts to lists.
+#     knns = df['knns'].apply(lambda x: safe_literal_eval(x, dtype=int))
+#     dists = df['dists'].apply(lambda x: safe_literal_eval(x, dtype=float))
+#     # Convert to Numpy matrices.
+#     I = np.vstack(knns)
+#     D = np.vstack(dists)
+    
+#     try:
+#         # Store the final results.
+#         store_results(os.path.join("results/", dataset, task, f"root_join.h5"), 'Root_Join', 'gooaq', 'task2', D, I, d_dim_red+make_groups_time, queries_time, f'root_join_params: 1,1; PCA params: 0.8; zero; Max memory used during dim reduction: {mem_usage} MiB; Max memory used during self_sim_join: {mem_join_usage} MiB')
+#         # Remove temporary results folder.
+#         shutil.rmtree("temporary")
+#     except Exception as e:
+#         print(f"Error while saving the file: {e}")
 
 if __name__ == "__main__":
     freeze_support()
@@ -443,8 +514,8 @@ if __name__ == "__main__":
         )
         
         args = parser.parse_args()
-        run(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
-
+        #run(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
+        run_with_memory_profiling(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
         print("Process completed successfully.")
 
     except Exception as e:
